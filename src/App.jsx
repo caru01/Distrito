@@ -3,7 +3,7 @@ import { Plus, Minus, Trash2, ShoppingBag, ShoppingCart, Copy, Check, X, ArrowLe
 import logoImg from './assets/logo-horizontal.png';
 
 const API_URL = import.meta.env.PROD
-  ? 'https://galushop.store/distrito/api/pedidos'
+  ? '/api/pedidos'
   : 'http://localhost:3001/api/pedidos';
 
 

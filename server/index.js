@@ -1,5 +1,6 @@
 console.log('🚀 Starting backend server...');
 
+const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { Pool } = require('pg');
@@ -108,6 +109,10 @@ app.post('/api/pedidos/setup', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(\`Servidor backend corriendo en http://localhost:\${PORT}\`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Servidor backend corriendo en http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
