@@ -43,7 +43,7 @@ app.get('/api/pedidos/init', async (req, res) => {
     // Asumimos que settings es solo una fila
     let settingsRow = { whatsapp_number: '', nequi_number: '', bancolombia_number: '' };
     try {
-      const { rows: settings } = await pool.query('SELECT * FROM settings LIMIT 1');
+      const { rows: settings } = await pool.query('SELECT * FROM pedidos_app_settings LIMIT 1');
       if (settings.length > 0) settingsRow = settings[0];
     } catch (err) {
       console.log('Settings table might not exist yet.');
