@@ -1,4 +1,5 @@
-const express = require('express');
+console.log('🚀 Starting backend server...');
+
 const cors = require('cors');
 require('dotenv').config();
 const { Pool } = require('pg');

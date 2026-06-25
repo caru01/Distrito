@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Minus, Trash2, ShoppingBag, ShoppingCart, Copy, Check, X, ArrowLeft, Lock, CreditCard, Wallet, Smartphone, Banknote, Menu } from 'lucide-react';
+import { fetchInitData } from './neonService';
 import logoImg from './assets/logo-horizontal.png';
 
-const API_URL = import.meta.env.PROD ? 'https://galushop.store/distrito/api/pedidos' : 'http://localhost:3001/api/pedidos';
 
 function App() {
   const [activeCategory, setActiveCategory] = useState('all');
@@ -36,8 +36,7 @@ function App() {
   const [copiedBanco, setCopiedBanco] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/init`)
-      .then(res => res.json())
+    fetchInitData()
       .then(data => {
         if(data.status === 'ok') {
           setProducts(data.products || []);
@@ -224,6 +223,7 @@ function App() {
   if (loading) {
     return (
       <div className="global-loader-container">
+        <img src={logoImg} alt="Distrito BG" className="loader-logo" />
         <div className="professional-spinner"></div>
         <p>Cargando menú...</p>
       </div>
