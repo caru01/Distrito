@@ -1,7 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Minus, Trash2, ShoppingBag, ShoppingCart, Copy, Check, X, ArrowLeft, Lock, CreditCard, Wallet, Smartphone, Banknote, Menu } from 'lucide-react';
-import { fetchInitData } from './neonService';
 import logoImg from './assets/logo-horizontal.png';
+
+const API_URL = import.meta.env.PROD
+  ? 'https://galushop.store/distrito/api/pedidos'
+  : 'http://localhost:3001/api/pedidos';
 
 
 function App() {
@@ -36,7 +39,8 @@ function App() {
   const [copiedBanco, setCopiedBanco] = useState(false);
 
   useEffect(() => {
-    fetchInitData()
+    fetch(`${API_URL}/init`)
+      .then(res => res.json())
       .then(data => {
         if(data.status === 'ok') {
           setProducts(data.products || []);
@@ -45,7 +49,7 @@ function App() {
         setLoading(false);
       })
       .catch(err => {
-        console.error("Error fetching data:", err);
+        console.error('Error fetching data:', err);
         setLoading(false);
       });
   }, []);
