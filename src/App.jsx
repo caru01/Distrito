@@ -96,7 +96,12 @@ function App() {
     if (type === 'banco') { setCopiedBanco(true); setTimeout(() => setCopiedBanco(false), 2000); }
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (e) => {
+    if (e) e.preventDefault();
+    if (cart.length === 0) {
+      alert("Tu carrito está vacío.");
+      return;
+    }
     if (!customer.name || !customer.phone) {
       alert("Por favor ingresa nombre y teléfono.");
       return;
@@ -110,14 +115,40 @@ function App() {
       return;
     }
     
+    setLoading(true);
     const phoneNumber = settings.whatsapp_number || "573000000000";
     
-    // Obtener y actualizar número de orden local
-    let currentOrderNum = parseInt(localStorage.getItem('distrito_order_num') || '1');
-    const orderNumber = String(currentOrderNum).padStart(4, '0');
-    localStorage.setItem('distrito_order_num', (currentOrderNum + 1).toString());
+    let dbOrderId = null;
+    let orderNumber = "0000";
 
-    let message = `*NUEVA ORDEN (${orderNumber})*\n`;
+    try {
+      // 1. Enviar la orden al backend (Dashboard CRM/Ventas) y obtener el ID
+      const res = await fetch(`${API_URL}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer,
+          cart,
+          total: subtotal
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'ok' && data.order_id) {
+        dbOrderId = data.order_id;
+        orderNumber = String(dbOrderId).padStart(4, '0');
+      }
+    } catch (error) {
+      console.error("Error guardando orden en dashboard:", error);
+    }
+
+    // Si falló el backend, usamos el local como fallback
+    if (!dbOrderId) {
+      let currentOrderNum = parseInt(localStorage.getItem('distrito_order_num') || '1');
+      orderNumber = String(currentOrderNum).padStart(4, '0');
+      localStorage.setItem('distrito_order_num', (currentOrderNum + 1).toString());
+    }
+
+    let message = `*NUEVA ORDEN (#${orderNumber})*\n`;
     
     if (customer.deliveryType === 'domicilio') {
       message += `Hola Distrito BG soy ${customer.name}, me gustaría hacer un pedido\n\n`;
@@ -160,26 +191,11 @@ function App() {
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
     
-    // Abrir WhatsApp INMEDIATAMENTE para evitar el bloqueo del navegador
-    window.open(whatsappUrl, '_blank');
+    // Cambiar la URL de la ventana actual para abrir WhatsApp
+    window.location.href = whatsappUrl;
     
-    // 1. Enviar la orden al backend (Dashboard CRM/Ventas) de forma asíncrona (sin await)
-    fetch(`${API_URL}/checkout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        customer,
-        cart,
-        total: subtotal
-      })
-    }).catch(error => {
-      console.error("Error guardando orden en dashboard:", error);
-    });
-    
-    // Recargar la página después de 1.5 segundos para limpiar el carrito
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
+    // Limpiar UI
+    setLoading(false);
   };
 
   const { isOpen, closeTimeStr, openTimeStr } = useMemo(() => {

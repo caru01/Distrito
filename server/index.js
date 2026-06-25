@@ -69,6 +69,39 @@ app.get('/api/pedidos/init', async (req, res) => {
   }
 });
 
+app.post('/api/pedidos/checkout', async (req, res) => {
+  try {
+    const { customer, cart, total } = req.body;
+    
+    // Si no hay DB, retornar un ID falso para que el frontend siga
+    if (!process.env.DATABASE_URL) {
+      return res.json({ status: 'ok', order_id: Math.floor(Math.random() * 1000) });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO pedidos_app_orders 
+       (customer_name, customer_phone, address, barrio, delivery_type, payment_method, total, cart_json, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) 
+       RETURNING id`,
+      [
+        customer.name, 
+        customer.phone, 
+        customer.address || '', 
+        customer.barrio || '', 
+        customer.deliveryType, 
+        customer.paymentMethod, 
+        total, 
+        JSON.stringify(cart)
+      ]
+    );
+
+    res.json({ status: 'ok', order_id: rows[0].id });
+  } catch (error) {
+    console.error('Error guardando orden:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 app.post('/api/pedidos/setup', async (req, res) => {
   try {
     if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'No hay DATABASE_URL en el archivo .env' });
@@ -87,6 +120,18 @@ app.post('/api/pedidos/setup', async (req, res) => {
         whatsapp_number VARCHAR(50),
         nequi_number VARCHAR(50),
         bancolombia_number VARCHAR(50)
+      );
+      CREATE TABLE IF NOT EXISTS pedidos_app_orders (
+        id SERIAL PRIMARY KEY,
+        customer_name VARCHAR(255),
+        customer_phone VARCHAR(50),
+        address TEXT,
+        barrio VARCHAR(255),
+        delivery_type VARCHAR(50),
+        payment_method VARCHAR(50),
+        total INTEGER,
+        cart_json JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
