@@ -36,7 +36,7 @@ app.get('/api/pedidos/init', async (req, res) => {
       });
     }
 
-    const { rows: products } = await pool.query('SELECT * FROM products');
+    const { rows: products } = await pool.query('SELECT * FROM pedidos_app_products');
     
     // Asumimos que settings es solo una fila
     let settingsRow = { whatsapp_number: '', nequi_number: '', bancolombia_number: '' };
@@ -72,7 +72,7 @@ app.post('/api/pedidos/setup', async (req, res) => {
     if (!process.env.DATABASE_URL) return res.status(400).json({ error: 'No hay DATABASE_URL en el archivo .env' });
 
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS products (
+      CREATE TABLE IF NOT EXISTS pedidos_app_products (
         id SERIAL PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
         description TEXT,
@@ -89,11 +89,11 @@ app.post('/api/pedidos/setup', async (req, res) => {
     `);
 
     // Solo insertar si esta vacía
-    const { rows: count } = await pool.query('SELECT COUNT(*) FROM products');
+    const { rows: count } = await pool.query('SELECT COUNT(*) FROM pedidos_app_products');
     if (parseInt(count[0].count) === 0) {
       for (const p of seedProducts) {
         await pool.query(
-          'INSERT INTO products (title, description, price, category, image) VALUES ($1, $2, $3, $4, $5)',
+          'INSERT INTO pedidos_app_products (title, description, price, category, image) VALUES ($1, $2, $3, $4, $5)',
           [p.title, p.description, p.price, p.category, p.image]
         );
       }

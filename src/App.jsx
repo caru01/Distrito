@@ -221,7 +221,14 @@ function App() {
     };
   }, [settings]);
 
-  if (loading) return <div className="loading-screen">Cargando menú...</div>;
+  if (loading) {
+    return (
+      <div className="global-loader-container">
+        <div className="professional-spinner"></div>
+        <p>Cargando menú...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
