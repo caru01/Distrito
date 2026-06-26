@@ -5,8 +5,10 @@ const pool = new Pool({
 });
 async function run() {
   try {
-    const res = await pool.query("SELECT column_default, data_type FROM information_schema.columns WHERE table_name = 'pedidos_app_products' AND column_name = 'id'");
-    console.log(JSON.stringify(res.rows, null, 2));
+    const res = await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE 'pedidos_app_%'");
+    console.log(res.rows);
+  } catch(e) {
+    console.error(e);
   } finally {
     pool.end();
   }

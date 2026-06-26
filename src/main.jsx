@@ -8,6 +8,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx'
 import AdminCategorias from './pages/AdminCategorias.jsx'
 import AdminPedidos from './pages/AdminPedidos.jsx'
 import AdminProductos from './pages/AdminProductos.jsx'
+import AdminInventario from './pages/AdminInventario.jsx'
 import AdminConfiguracion from './pages/AdminConfiguracion.jsx'
 import './index.css'
 
@@ -23,7 +24,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="productos" element={<AdminProductos />} />
           <Route path="categorias" element={<AdminCategorias />} />
           <Route path="clientes" element={<div style={{padding:20}}>Vista de Clientes (En construcción)</div>} />
-          <Route path="inventario" element={<div style={{padding:20}}>Vista de Inventario (En construcción)</div>} />
+          <Route path="inventario" element={<AdminInventario />} />
           <Route path="reportes" element={<div style={{padding:20}}>Vista de Reportes (En construcción)</div>} />
           <Route path="configuracion" element={<AdminConfiguracion />} />
         </Route>

@@ -11,7 +11,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'distrito_super_secret_2026';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -256,6 +257,28 @@ app.put('/api/pedidos/admin/orders/:id', authenticateToken, async (req, res) => 
   }
 });
 
+// Editar pedido completo (carrito, total, cliente)
+app.put('/api/pedidos/admin/orders/:id/edit', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cart, total, customer } = req.body;
+    
+    // Convertir el cart a string JSON
+    const cartStr = JSON.stringify(cart);
+
+    const { rows } = await pool.query(
+      `UPDATE pedidos_app_orders 
+       SET cart_json = $1, total = $2, customer_name = $3, customer_phone = $4, address = $5, delivery_type = $6, payment_method = $7
+       WHERE id = $8 RETURNING *`,
+      [cartStr, total, customer.name, customer.phone, customer.address, customer.deliveryType, customer.paymentMethod, id]
+    );
+    res.json({ status: 'ok', order: rows[0] });
+  } catch (error) {
+    console.error('Error editing order:', error);
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
 // Eliminar orden
 app.delete('/api/pedidos/admin/orders/:id', authenticateToken, async (req, res) => {
   try {
@@ -446,6 +469,165 @@ app.post('/api/pedidos/setup', async (req, res) => {
   } catch (error) {
     console.error('Error de setup:', error);
     res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+// ================= INVENTARIO =================
+
+app.get('/api/pedidos/admin/inventory', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM pedidos_app_inventory ORDER BY name ASC');
+    res.json({ status: 'ok', items: rows });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.post('/api/pedidos/admin/inventory', authenticateToken, async (req, res) => {
+  try {
+    const { image, name, type, category, unit, stock, min_stock, expiry_date, unit_cost, supplier } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO pedidos_app_inventory (image, name, type, category, unit, stock, min_stock, expiry_date, unit_cost, supplier) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [image, name, type, category, unit, stock || 0, min_stock || 0, expiry_date || null, unit_cost || 0, supplier]
+    );
+    res.json({ status: 'ok', item: rows[0] });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.put('/api/pedidos/admin/inventory/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { image, name, type, category, unit, min_stock, expiry_date, unit_cost, supplier } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE pedidos_app_inventory 
+       SET image=$1, name=$2, type=$3, category=$4, unit=$5, min_stock=$6, expiry_date=$7, unit_cost=$8, supplier=$9, updated_at=NOW() 
+       WHERE id=$10 RETURNING *`,
+      [image, name, type, category, unit, min_stock, expiry_date, unit_cost, supplier, id]
+    );
+    res.json({ status: 'ok', item: rows[0] });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.delete('/api/pedidos/admin/inventory/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM pedidos_app_inventory WHERE id = $1', [id]);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.post('/api/pedidos/admin/inventory/:id/movement', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { movement_type, quantity, notes } = req.body; // IN, OUT, ADJUST
+    
+    // Iniciar transacción
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Registrar movimiento
+      await client.query(
+        'INSERT INTO pedidos_app_inventory_movements (inventory_id, movement_type, quantity, notes) VALUES ($1, $2, $3, $4)',
+        [id, movement_type, quantity, notes]
+      );
+      
+      // Actualizar stock
+      let updateQuery = '';
+      if (movement_type === 'IN') updateQuery = 'stock = stock + $1';
+      else if (movement_type === 'OUT') updateQuery = 'stock = stock - $1';
+      else if (movement_type === 'ADJUST') updateQuery = 'stock = $1';
+
+      const { rows } = await client.query(
+        `UPDATE pedidos_app_inventory SET ${updateQuery}, updated_at=NOW() WHERE id = $2 RETURNING *`,
+        [quantity, id]
+      );
+      
+      await client.query('COMMIT');
+      res.json({ status: 'ok', item: rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.get('/api/pedidos/admin/inventory/:id/movements', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query('SELECT * FROM pedidos_app_inventory_movements WHERE inventory_id = $1 ORDER BY created_at DESC', [id]);
+    res.json({ status: 'ok', movements: rows });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+// ================= COMPRAS =================
+app.get('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM pedidos_app_purchases ORDER BY created_at DESC');
+    res.json({ status: 'ok', purchases: rows });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.post('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => {
+  const { invoice_number, supplier, purchase_date, total_amount, notes, items } = req.body;
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // 1. Crear compra
+    const { rows: purchaseRows } = await client.query(
+      `INSERT INTO pedidos_app_purchases (invoice_number, supplier, purchase_date, total_amount, notes) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [invoice_number, supplier, purchase_date || new Date(), total_amount, notes]
+    );
+    const purchase = purchaseRows[0];
+
+    // 2. Procesar ítems
+    for (const item of items) {
+      // Registrar detalle de compra
+      await client.query(
+        `INSERT INTO pedidos_app_purchase_items (purchase_id, inventory_id, quantity, unit_cost, total_cost)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [purchase.id, item.inventory_id, item.quantity, item.unit_cost, item.total_cost]
+      );
+      
+      // Actualizar inventario (sumar stock y actualizar costo unitario)
+      await client.query(
+        `UPDATE pedidos_app_inventory 
+         SET stock = stock + $1, unit_cost = $2, updated_at = NOW() 
+         WHERE id = $3`,
+        [item.quantity, item.unit_cost, item.inventory_id]
+      );
+
+      // Registrar movimiento
+      await client.query(
+        `INSERT INTO pedidos_app_inventory_movements (inventory_id, movement_type, quantity, notes) 
+         VALUES ($1, $2, $3, $4)`,
+        [item.inventory_id, 'IN', item.quantity, `Compra Factura: ${invoice_number || 'S/N'}`]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ status: 'ok', purchase });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ status: 'error', error: error.message });
+  } finally {
+    client.release();
   }
 });
 

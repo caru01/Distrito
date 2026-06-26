@@ -63,27 +63,38 @@ export default function AdminProductos() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!currentProduct.title || !currentProduct.price) {
+      return alert('Por favor, ingresa el nombre y el precio del producto.');
+    }
+
     const token = localStorage.getItem('distrito_admin_token');
     const method = currentProduct.id ? 'PUT' : 'POST';
     const url = currentProduct.id ? `${API_URL}/admin/products/${currentProduct.id}` : `${API_URL}/admin/products`;
 
     try {
+      const payload = {
+        ...currentProduct,
+        price: parseInt(currentProduct.price) || 0,
+        stock: currentProduct.stock ? parseInt(currentProduct.stock) : null
+      };
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          ...currentProduct,
-          price: parseInt(currentProduct.price),
-          stock: currentProduct.stock ? parseInt(currentProduct.stock) : null
-        })
+        body: JSON.stringify(payload)
       });
+
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error('Error del servidor:', errData);
+        alert(`Error al guardar producto: ${errData.error || res.statusText || 'Verifica que la imagen no sea muy pesada.'}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Error guardando producto');
+      alert('Error de conexión guardando el producto. Verifica tu servidor.');
     }
   };
 
@@ -382,7 +393,7 @@ export default function AdminProductos() {
                 <div>
                   <div style={{ marginBottom: '20px' }}>
                     <label style={{ display: 'block', color: '#BDBDBD', marginBottom: '8px', fontWeight: '500' }}>Imagen del Producto</label>
-                    <div style={{ border: '2px dashed #333333', borderRadius: '12px', padding: '24px', textAlign: 'center', backgroundColor: '#1A1A1A', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ border: '2px dashed #333333', borderRadius: '12px', padding: '24px', textAlign: 'center', backgroundColor: '#1A1A1A', position: 'relative', overflow: 'hidden', marginBottom: '12px' }}>
                       {currentProduct.image ? (
                         <>
                           <img src={currentProduct.image} alt="preview" style={{ width: '100%', height: '180px', objectFit: 'contain', marginBottom: '12px' }} />
@@ -417,6 +428,13 @@ export default function AdminProductos() {
                         </div>
                       )}
                     </div>
+                    <input 
+                      type="text" 
+                      value={currentProduct.image && currentProduct.image.startsWith('data:') ? '' : currentProduct.image} 
+                      onChange={e => setCurrentProduct({...currentProduct, image: e.target.value})}
+                      placeholder="O pega una URL de imagen (https://...)" 
+                      style={{ width: '100%', backgroundColor: '#1A1A1A', border: '1px solid #333333', padding: '14px', borderRadius: '10px', color: '#FFFFFF', boxSizing: 'border-box', outline: 'none' }} 
+                    />
                   </div>
 
                   <div style={{ marginBottom: '20px' }}>

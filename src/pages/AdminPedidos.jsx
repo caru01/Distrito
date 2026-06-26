@@ -13,6 +13,7 @@ export default function AdminPedidos() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
   
   // Modal State
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -20,6 +21,7 @@ export default function AdminPedidos() {
   
   // POS State
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
   const [posSearch, setPosSearch] = useState('');
   const [newOrderCart, setNewOrderCart] = useState([]);
   const [newOrderCustomer, setNewOrderCustomer] = useState({
@@ -145,15 +147,39 @@ export default function AdminPedidos() {
     window.open(`https://wa.me/57${phone.replace(/\D/g, '')}?text=${msg}`, '_blank');
   };
 
+  const handleEditOrder = (order) => {
+    setEditingOrderId(order.id);
+    setNewOrderCart(order.cart_json || []);
+    setNewOrderCustomer({
+      name: order.customer_name || '',
+      phone: order.customer_phone || '',
+      address: order.address || '',
+      deliveryType: order.delivery_type || 'presencial',
+      paymentMethod: order.payment_method || 'efectivo',
+      source: order.source || 'Web'
+    });
+    setIsNewOrderOpen(true);
+  };
+
   const handleCreateOrder = async (e) => {
     e.preventDefault();
     if (newOrderCart.length === 0) return alert('El carrito está vacío');
     const total = newOrderCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
     try {
-      const res = await fetch(`${API_URL}/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const token = localStorage.getItem('distrito_admin_token');
+      const url = editingOrderId 
+        ? `${API_URL}/admin/orders/${editingOrderId}/edit`
+        : `${API_URL}/checkout`;
+      
+      const method = editingOrderId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method: method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({
           customer: newOrderCustomer,
           cart: newOrderCart,
@@ -163,9 +189,12 @@ export default function AdminPedidos() {
       });
       if (res.ok) {
         setIsNewOrderOpen(false);
+        setEditingOrderId(null);
         setNewOrderCart([]);
         setNewOrderCustomer({ name: 'Cliente Local', phone: '0000000000', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial' });
         fetchOrders();
+      } else {
+        alert('Error guardando pedido');
       }
     } catch (err) { console.error(err); }
   };
@@ -205,7 +234,15 @@ export default function AdminPedidos() {
                           (order.customer_name && order.customer_name.toLowerCase().includes(searchLower)) ||
                           (order.customer_phone && order.customer_phone.includes(searchLower));
                           
-    return matchesTab && matchesSearch;
+    let matchesDate = true;
+    if (filterDate && order.created_at) {
+      const orderDate = new Date(order.created_at);
+      // Ajustar al offset local para que coincida con lo que ve el usuario
+      const localDateString = new Date(orderDate.getTime() - (orderDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      matchesDate = localDateString === filterDate;
+    }
+                          
+    return matchesTab && matchesSearch && matchesDate;
   });
 
   const getStatusBadge = (status) => {
@@ -254,10 +291,18 @@ export default function AdminPedidos() {
     );
   };
 
-  const statNuevos = orders.filter(o => o.status === 'Nuevo').length;
-  const statPreparacion = orders.filter(o => o.status === 'En preparación').length;
-  const statEntregados = orders.filter(o => o.status === 'Entregado').length;
-  const totalVentas = orders.filter(o => o.status !== 'Cancelado').reduce((acc, o) => acc + (o.total || 0), 0);
+  // Filtrar estadísticas por la fecha seleccionada
+  const ordersInDate = orders.filter(o => {
+    if (!filterDate || !o.created_at) return true;
+    const orderDate = new Date(o.created_at);
+    const localDateString = new Date(orderDate.getTime() - (orderDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    return localDateString === filterDate;
+  });
+
+  const statNuevos = ordersInDate.filter(o => o.status === 'Nuevo').length;
+  const statPreparacion = ordersInDate.filter(o => o.status === 'En preparación').length;
+  const statEntregados = ordersInDate.filter(o => o.status === 'Entregado').length;
+  const totalVentas = ordersInDate.filter(o => o.status === 'Entregado' || o.status === 'Listo').reduce((s, o) => s + (o.total || 0), 0);
 
   return (
     <div style={{ padding: '40px', fontFamily: "'Montserrat', 'Poppins', sans-serif", backgroundColor: '#0D0D0D', minHeight: '100%' }}>
@@ -285,7 +330,7 @@ export default function AdminPedidos() {
       {/* Tarjetas de Estadísticas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '40px' }}>
         {[
-          { label: 'Pedidos de hoy', value: orders.length, icon: <ShoppingCart size={24} /> },
+          { label: filterDate ? 'Pedidos' : 'Total Histórico', value: ordersInDate.length, icon: <ShoppingCart size={24} /> },
           { label: 'Pedidos pendientes', value: statNuevos, icon: <Clock size={24} /> },
           { label: 'En preparación', value: statPreparacion, icon: <ChefHat size={24} /> },
           { label: 'Pedidos entregados', value: statEntregados, icon: <CheckCircle size={24} /> },
@@ -302,8 +347,8 @@ export default function AdminPedidos() {
       </div>
 
       {/* Barra de Búsqueda y Filtros */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
           <Search size={20} style={{ position: 'absolute', left: '16px', top: '16px', color: '#6B7280' }} />
           <input 
             type="text" 
@@ -313,8 +358,24 @@ export default function AdminPedidos() {
             style={{ width: '100%', backgroundColor: '#111111', border: '1px solid #2A2A2A', borderRadius: '12px', padding: '16px 16px 16px 48px', color: '#FFFFFF', fontSize: '15px', outline: 'none', boxSizing: 'border-box' }} 
           />
         </div>
-        <button style={{ backgroundColor: '#111111', border: '1px solid #2A2A2A', borderRadius: '12px', padding: '0 20px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '500' }}>
-          <Filter size={18} color="#D4A017" /> Filtros
+        
+        <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#111111', border: '1px solid #2A2A2A', borderRadius: '12px', padding: '0 16px', height: '52px' }}>
+          <label style={{ color: '#BDBDBD', fontSize: '14px', fontWeight: '500', marginRight: '12px' }}>Fecha:</label>
+          <input 
+            type="date" 
+            value={filterDate} 
+            onChange={e => setFilterDate(e.target.value)} 
+            style={{ backgroundColor: 'transparent', color: '#FFFFFF', border: 'none', outline: 'none', fontSize: '15px', cursor: 'pointer' }} 
+          />
+          {filterDate && (
+            <button onClick={() => setFilterDate('')} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', marginLeft: '8px', padding: '4px' }}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        
+        <button style={{ backgroundColor: '#111111', border: '1px solid #2A2A2A', borderRadius: '12px', padding: '0 20px', height: '52px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '500' }}>
+          <Filter size={18} color="#D4A017" /> Más Filtros
         </button>
       </div>
 
@@ -377,7 +438,7 @@ export default function AdminPedidos() {
                 <tr key={order.id} style={{ borderBottom: index === filteredOrders.length - 1 ? 'none' : '1px solid #222222' }}>
                   <td style={{ padding: '16px 24px' }}>
                     <div style={{ color: '#FFFFFF', fontWeight: '700', fontSize: '16px' }}>#{order.id.toString().padStart(4, '0')}</div>
-                    <div style={{ color: '#6B7280', fontSize: '13px', marginTop: '4px' }}>{new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    <div style={{ color: '#6B7280', fontSize: '13px', marginTop: '4px' }}>{new Date(order.created_at).toLocaleDateString()} {new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                   </td>
                   <td style={{ padding: '16px 24px' }}>
                     <div style={{ color: '#FFFFFF', fontWeight: '600', fontSize: '15px' }}>{order.customer_name || 'Sin nombre'}</div>
@@ -402,6 +463,9 @@ export default function AdminPedidos() {
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', position: 'relative' }}>
                       <button onClick={() => setSelectedOrder(order)} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#1A1A1A', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', cursor: 'pointer' }}>
                         <Eye size={16} />
+                      </button>
+                      <button onClick={() => handleEditOrder(order)} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#1A1A1A', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', cursor: 'pointer' }}>
+                        <Pencil size={16} />
                       </button>
                       <button onClick={() => handlePrintOrder(order)} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#1A1A1A', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', cursor: 'pointer' }}>
                         <Printer size={16} />
@@ -539,7 +603,9 @@ export default function AdminPedidos() {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', zIndex: 1000 }}>
           <div style={{ flex: 1, backgroundColor: '#0D0D0D', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '20px', borderBottom: '1px solid #222222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ color: '#FFFFFF', margin: 0, fontSize: '24px' }}>Menú de Productos</h2>
+              <h2 style={{ color: '#FFFFFF', margin: 0, fontSize: '24px' }}>
+                {editingOrderId ? `Editar Pedido #${editingOrderId}` : 'Menú de Productos'}
+              </h2>
               <div style={{ position: 'relative', width: '300px' }}>
                 <Search size={18} style={{ position: 'absolute', left: '12px', top: '10px', color: '#6B7280' }} />
                 <input 
@@ -612,7 +678,7 @@ export default function AdminPedidos() {
               </div>
 
               <button onClick={handleCreateOrder} style={{ width: '100%', padding: '14px', backgroundColor: '#D4A017', color: '#000', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '16px', cursor: 'pointer' }}>
-                Confirmar Orden
+                {editingOrderId ? 'Guardar Cambios' : 'Confirmar Orden'}
               </button>
             </div>
           </div>
