@@ -13,6 +13,7 @@ function App() {
   
   // Data from Backend
   const [products, setProducts] = useState([]);
+  const [categoriesData, setCategoriesData] = useState([]);
   const [settings, setSettings] = useState({ whatsapp_number: '', nequi_number: '', bancolombia_number: '' });
   const [loading, setLoading] = useState(true);
 
@@ -44,6 +45,9 @@ function App() {
       .then(data => {
         if(data.status === 'ok') {
           setProducts(data.products || []);
+          if (data.categories) {
+            setCategoriesData(data.categories);
+          }
           setSettings(data.settings || {});
         }
         setLoading(false);
@@ -55,12 +59,31 @@ function App() {
   }, []);
 
   const categories = useMemo(() => {
-    const cats = new Set(products.map(p => p.category));
-    return [{ id: 'all', name: 'Todos' }, ...Array.from(cats).map(c => ({ id: c, name: c }))];
-  }, [products]);
+    let baseCategories = [];
+    
+    // Icono para la categoría "Todos"
+    const allCategory = { id: 'all', name: 'Todos', iconStr: '📋' };
+    
+    // Categoría "Destacados"
+    const hasFeatured = products.some(p => p.is_featured);
+    const featuredCategory = hasFeatured ? { id: 'featured', name: 'Destacados', iconStr: '⭐' } : null;
+
+    if (categoriesData.length > 0) {
+      baseCategories = categoriesData.map(c => ({ id: c.name, name: c.name, iconStr: c.image }));
+    } else {
+      const cats = new Set(products.map(p => p.category));
+      baseCategories = Array.from(cats).map(c => ({ id: c, name: c, iconStr: '🏷️' }));
+    }
+
+    if (featuredCategory) {
+      return [allCategory, featuredCategory, ...baseCategories];
+    }
+    return [allCategory, ...baseCategories];
+  }, [products, categoriesData]);
 
   const filteredProducts = useMemo(() => {
     if (activeCategory === 'all') return products;
+    if (activeCategory === 'featured') return products.filter(p => p.is_featured);
     return products.filter(p => p.category === activeCategory);
   }, [activeCategory, products]);
 
@@ -317,19 +340,13 @@ function App() {
             {/* Categories */}
             <div className="categories">
           {categories.map(cat => {
-            let icon = '🍔';
-            if (cat.name.toLowerCase().includes('papa')) icon = '🍟';
-            if (cat.name.toLowerCase().includes('bebida')) icon = '🥤';
-            if (cat.name.toLowerCase().includes('promo')) icon = '🔥';
-            if (cat.id === 'all') icon = '⭐';
-
             return (
               <button 
                 key={cat.id} 
                 className={`category-btn ${activeCategory === cat.id ? 'active' : ''}`}
                 onClick={() => setActiveCategory(cat.id)}
               >
-                <span className="cat-icon">{icon}</span>
+                <span className="cat-icon">{cat.iconStr || '🍔'}</span>
                 {cat.name.toUpperCase()}
               </button>
             )
