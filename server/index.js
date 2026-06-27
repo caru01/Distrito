@@ -14,8 +14,10 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+const dbUrl = process.env.DATABASE_URL || process.env.VITE_NEON_URL;
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: dbUrl,
   ssl: {
     rejectUnauthorized: false
   }
@@ -33,9 +35,9 @@ const seedProducts = [
 
 app.get('/api/pedidos/init', async (req, res) => {
   try {
-    // Si no hay DATABASE_URL configurada, devolver datos de prueba
-    if (!process.env.DATABASE_URL) {
-      console.log('No DATABASE_URL found. Returning mock data.');
+    // Si no hay dbUrl configurada, devolver datos de prueba
+    if (!dbUrl) {
+      console.log('No database connection URL found. Returning mock data.');
       return res.json({
         status: 'ok',
         products: seedProducts.map((p, i) => ({ id: i + 1, ...p })),
@@ -55,11 +57,21 @@ app.get('/api/pedidos/init', async (req, res) => {
       console.log('Settings table might not exist yet.');
     }
 
+    // Anuncio
+    let announcementRow = null;
+    try {
+      const { rows: announcements } = await pool.query('SELECT * FROM pedidos_app_announcements ORDER BY id DESC LIMIT 1');
+      if (announcements.length > 0) announcementRow = announcements[0];
+    } catch (err) {
+      console.log('Announcement table might not exist yet.');
+    }
+
     res.json({
       status: 'ok',
       products,
       categories,
-      settings: settingsRow
+      settings: settingsRow,
+      announcement: announcementRow
     });
   } catch (error) {
     console.error('Error fetching init data:', error);
@@ -421,7 +433,8 @@ app.post('/api/pedidos/setup', async (req, res) => {
         status VARCHAR(50) DEFAULT 'Nuevo',
         source VARCHAR(50) DEFAULT 'Web',
         notes TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        completed_at TIMESTAMP
       );
       
       ALTER TABLE pedidos_app_orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Nuevo';
@@ -628,6 +641,68 @@ app.post('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => 
     res.status(500).json({ status: 'error', error: error.message });
   } finally {
     client.release();
+  }
+});
+
+// --- MÓDULO DE CALIFICACIONES ---
+app.post('/api/pedidos/rate', async (req, res) => {
+  const { product_id, rating } = req.body;
+  if (!product_id || !rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ status: 'error', error: 'Calificación inválida' });
+  }
+  
+  try {
+    const result = await pool.query(
+      `UPDATE pedidos_app_products 
+       SET rating_sum = rating_sum + $1, rating_count = rating_count + 1 
+       WHERE id = $2 RETURNING *`,
+      [rating, product_id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: 'error', error: 'Producto no encontrado' });
+    }
+    
+    res.json({ status: 'ok', product: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+// --- MÓDULO DE ANUNCIOS ---
+app.get('/api/pedidos/announcement', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM pedidos_app_announcements ORDER BY id DESC LIMIT 1');
+    if (rows.length > 0) {
+      res.json({ status: 'ok', announcement: rows[0] });
+    } else {
+      res.json({ status: 'ok', announcement: null });
+    }
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.put('/api/pedidos/admin/announcement', authenticateToken, async (req, res) => {
+  const { title, image_url, is_active } = req.body;
+  try {
+    const { rows } = await pool.query('SELECT id FROM pedidos_app_announcements LIMIT 1');
+    if (rows.length > 0) {
+      const id = rows[0].id;
+      const updated = await pool.query(
+        'UPDATE pedidos_app_announcements SET title = $1, image_url = $2, is_active = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+        [title, image_url, is_active, id]
+      );
+      res.json({ status: 'ok', announcement: updated.rows[0] });
+    } else {
+      const inserted = await pool.query(
+        'INSERT INTO pedidos_app_announcements (title, image_url, is_active) VALUES ($1, $2, $3) RETURNING *',
+        [title, image_url, is_active]
+      );
+      res.json({ status: 'ok', announcement: inserted.rows[0] });
+    }
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
   }
 });
 

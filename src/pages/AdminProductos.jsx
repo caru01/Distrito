@@ -26,7 +26,7 @@ export default function AdminProductos() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       // Fetch Products
       const resP = await fetch(`${API_URL}/admin/products`, { headers: { 'Authorization': `Bearer ${token}` } });
       const dataP = await resP.json();
@@ -67,7 +67,7 @@ export default function AdminProductos() {
       return alert('Por favor, ingresa el nombre y el precio del producto.');
     }
 
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     const method = currentProduct.id ? 'PUT' : 'POST';
     const url = currentProduct.id ? `${API_URL}/admin/products/${currentProduct.id}` : `${API_URL}/admin/products`;
 
@@ -100,7 +100,7 @@ export default function AdminProductos() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('¿Eliminar este producto?')) return;
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       await fetch(`${API_URL}/admin/products/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       fetchData();
@@ -111,7 +111,7 @@ export default function AdminProductos() {
 
   const toggleStatus = async (prod) => {
     const newStatus = prod.status === 'Activo' ? 'Inactivo' : 'Activo';
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       await fetch(`${API_URL}/admin/products/${prod.id}`, {
         method: 'PUT',
@@ -123,7 +123,7 @@ export default function AdminProductos() {
   };
 
   const toggleFeatured = async (prod) => {
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       await fetch(`${API_URL}/admin/products/${prod.id}`, {
         method: 'PUT',

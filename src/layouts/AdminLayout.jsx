@@ -1,19 +1,50 @@
-import React from 'react';
-import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBag, Package, List, Users, Archive, BarChart3, Settings, LogOut } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Outlet, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, ShoppingBag, Package, List, Users, Archive, BarChart3, Settings, LogOut, Megaphone } from 'lucide-react';
 
 export default function AdminLayout() {
-  const token = localStorage.getItem('distrito_admin_token');
+  const token = sessionStorage.getItem('distrito_admin_token');
   const location = useLocation();
+  const navigate = useNavigate();
+  const timeoutRef = useRef(null);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('distrito_admin_token');
+    window.location.href = '/admin/login';
+  };
+
+  const resetTimer = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      // Auto logout after 10 min (600000 ms)
+      handleLogout();
+    }, 600000);
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    
+    // Set up listeners for activity
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('click', resetTimer);
+    window.addEventListener('scroll', resetTimer);
+    
+    // Init timer
+    resetTimer();
+    
+    return () => {
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('click', resetTimer);
+      window.removeEventListener('scroll', resetTimer);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [token]);
 
   if (!token) {
     return <Navigate to="/admin/login" replace />;
   }
-
-  const handleLogout = () => {
-    localStorage.removeItem('distrito_admin_token');
-    window.location.href = '/admin/login';
-  };
 
   const navItems = [
     { name: 'Dashboard', path: '/admin', icon: <LayoutDashboard size={20} /> },
@@ -23,6 +54,7 @@ export default function AdminLayout() {
     { name: 'Clientes', path: '/admin/clientes', icon: <Users size={20} /> },
     { name: 'Inventario', path: '/admin/inventario', icon: <Archive size={20} /> },
     { name: 'Reportes', path: '/admin/reportes', icon: <BarChart3 size={20} /> },
+    { name: 'Anuncios', path: '/admin/anuncios', icon: <Megaphone size={20} /> },
     { name: 'Configuración', path: '/admin/configuracion', icon: <Settings size={20} /> },
   ];
 

@@ -30,7 +30,7 @@ export default function AdminCategorias() {
 
   const fetchCategories = async () => {
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const res = await fetch(`${API_URL}/admin/categories`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -61,7 +61,7 @@ export default function AdminCategorias() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     const method = currentCategory.id ? 'PUT' : 'POST';
     const url = currentCategory.id 
       ? `${API_URL}/admin/categories/${currentCategory.id}` 
@@ -91,7 +91,7 @@ export default function AdminCategorias() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('¿Estás seguro de eliminar esta categoría?')) return;
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       const res = await fetch(`${API_URL}/admin/categories/${id}`, {
         method: 'DELETE',

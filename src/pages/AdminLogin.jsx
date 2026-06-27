@@ -25,7 +25,7 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (res.ok && data.token) {
-        localStorage.setItem('distrito_admin_token', data.token);
+        sessionStorage.setItem('distrito_admin_token', data.token);
         navigate('/admin');
       } else {
         setError(data.error || 'Credenciales inválidas');

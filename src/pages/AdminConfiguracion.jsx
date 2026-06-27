@@ -28,7 +28,7 @@ export default function AdminConfiguracion() {
 
   const fetchSettings = async () => {
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const res = await fetch(`${API_URL}/admin/settings`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -47,7 +47,7 @@ export default function AdminConfiguracion() {
     setSaving(true);
     setSaveMessage('');
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const res = await fetch(`${API_URL}/admin/settings`, {
         method: 'PUT',
         headers: { 

@@ -36,7 +36,8 @@ async function run() {
         status VARCHAR(50) DEFAULT 'Nuevo',
         source VARCHAR(50) DEFAULT 'Web',
         notes TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        completed_at TIMESTAMP
       );
       
       -- Agregar columnas si la tabla ya existía

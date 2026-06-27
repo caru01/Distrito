@@ -21,7 +21,45 @@ function App() {
   const [checkoutStep, setCheckoutStep] = useState(1); // 1 = Cart, 2 = Checkout Form
   const [isCartOpenMobile, setIsCartOpenMobile] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+  const [announcement, setAnnouncement] = useState(null);
+  const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
+  const [ratedProducts, setRatedProducts] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('distrito_rated_products') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const handleRateProduct = async (productId, rating) => {
+    if (ratedProducts.includes(productId)) return;
+
+    try {
+      // Optimistic UI update
+      setProducts(prev => prev.map(p => {
+        if (p.id === productId) {
+          return {
+            ...p,
+            rating_sum: (p.rating_sum || 0) + rating,
+            rating_count: (p.rating_count || 0) + 1
+          };
+        }
+        return p;
+      }));
+
+      const newRated = [...ratedProducts, productId];
+      setRatedProducts(newRated);
+      localStorage.setItem('distrito_rated_products', JSON.stringify(newRated));
+
+      await fetch(`${API_URL}/rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, rating })
+      });
+    } catch (err) {
+      console.error('Error rating product', err);
+    }
+  };
 
   // Form State
   const [customer, setCustomer] = useState({ 
@@ -49,6 +87,10 @@ function App() {
             setCategoriesData(data.categories);
           }
           setSettings(data.settings || {});
+          if (data.announcement && data.announcement.is_active) {
+            setAnnouncement(data.announcement);
+            setIsAnnouncementOpen(true);
+          }
         }
         setLoading(false);
       })
@@ -370,14 +412,28 @@ function App() {
                   <h3 className="product-title">{product.title}</h3>
                   <div className="product-rating">
                     <span className="stars">
-                      <span style={{ color: '#D4A017' }}>★★★</span>
-                      <span style={{ position: 'relative', display: 'inline-block', color: '#555' }}>
-                        ★
-                        <span style={{ position: 'absolute', left: 0, top: 0, overflow: 'hidden', width: '50%', color: '#D4A017' }}>★</span>
-                      </span>
-                      <span style={{ color: '#555' }}>★</span>
+                      {[1, 2, 3, 4, 5].map(star => {
+                        const avg = product.rating_count ? (product.rating_sum / product.rating_count) : 0;
+                        const isFilled = star <= Math.round(avg);
+                        const canRate = !ratedProducts.includes(product.id);
+                        return (
+                          <span 
+                            key={star} 
+                            onClick={() => canRate && handleRateProduct(product.id, star)}
+                            className={canRate ? "interactive-star" : ""}
+                            style={{ 
+                              color: isFilled ? '#D4A017' : '#555', 
+                              cursor: canRate ? 'pointer' : 'default',
+                              fontSize: '18px',
+                              display: 'inline-block'
+                            }}
+                          >
+                            ★
+                          </span>
+                        );
+                      })}
                     </span>
-                    <span className="rating-count">({Math.floor(Math.random() * 100) + 50})</span>
+                    <span className="rating-count">({product.rating_count || 0})</span>
                   </div>
                   <p className="product-desc">{product.description}</p>
                   <div className="product-footer">
@@ -634,6 +690,39 @@ function App() {
       </div>
         </div>
       </main>
+
+      {/* MODAL DE ANUNCIO */}
+      {isAnnouncementOpen && announcement && announcement.is_active && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: '#111111', borderRadius: '24px', overflow: 'hidden', width: '100%', maxWidth: '400px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', border: '1px solid #333' }}>
+            <button 
+              onClick={() => setIsAnnouncementOpen(false)}
+              style={{ position: 'absolute', top: '16px', right: '16px', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.5)', color: '#FFF', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+            >
+              <X size={20} />
+            </button>
+            
+            {announcement.image_url && (
+              <div style={{ flexShrink: 1, overflow: 'hidden', display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
+                <img src={announcement.image_url} alt="Anuncio" style={{ width: '100%', height: 'auto', maxHeight: '55vh', objectFit: 'contain' }} />
+              </div>
+            )}
+            
+            <div style={{ padding: '24px', textAlign: 'center', overflowY: 'auto' }}>
+              <h3 style={{ margin: '0 0 16px 0', color: '#FFFFFF', fontSize: '24px', fontWeight: '800' }}>
+                {announcement.title}
+              </h3>
+              <button 
+                onClick={() => setIsAnnouncementOpen(false)}
+                style={{ backgroundColor: '#D4A017', color: '#000', border: 'none', borderRadius: '12px', padding: '14px 24px', fontWeight: '700', fontSize: '16px', width: '100%', cursor: 'pointer' }}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

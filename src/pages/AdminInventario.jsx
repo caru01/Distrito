@@ -39,7 +39,7 @@ export default function AdminInventario() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const resItems = await fetch(`${API_URL}/admin/inventory`, { headers: { 'Authorization': `Bearer ${token}` } });
       const dataItems = await resItems.json();
       if (dataItems.status === 'ok') setItems(dataItems.items);
@@ -62,7 +62,7 @@ export default function AdminInventario() {
     e.preventDefault();
     if (!currentItem.name) return alert('El nombre es requerido');
     
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     const method = currentItem.id ? 'PUT' : 'POST';
     const url = currentItem.id ? `${API_URL}/admin/inventory/${currentItem.id}` : `${API_URL}/admin/inventory`;
 
@@ -85,7 +85,7 @@ export default function AdminInventario() {
     e.preventDefault();
     if (currentMove.quantity <= 0) return alert('La cantidad debe ser mayor a 0');
     
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       const res = await fetch(`${API_URL}/admin/inventory/${currentMove.inventory_id}/movement`, {
         method: 'POST',
@@ -103,7 +103,7 @@ export default function AdminInventario() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('¿Estás seguro de eliminar este ítem del inventario?')) return;
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       await fetch(`${API_URL}/admin/inventory/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
       fetchData();
@@ -114,7 +114,7 @@ export default function AdminInventario() {
     e.preventDefault();
     if (newPurchase.items.length === 0) return alert('Debes agregar al menos un ítem a la compra');
     
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     const total_amount = newPurchase.items.reduce((sum, item) => sum + item.total_cost, 0);
 
     try {

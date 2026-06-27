@@ -30,7 +30,7 @@ export default function AdminPedidos() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const res = await fetch(`${API_URL}/admin/orders`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -47,7 +47,7 @@ export default function AdminPedidos() {
 
   const fetchProducts = async () => {
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const res = await fetch(`${API_URL}/admin/products`, { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await res.json();
       if (data.status === 'ok') setProducts(data.products.filter(p => p.status === 'Activo'));
@@ -60,7 +60,7 @@ export default function AdminPedidos() {
   }, []);
 
   const handleUpdateStatus = async (id, newStatus) => {
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       const res = await fetch(`${API_URL}/admin/orders/${id}`, {
         method: 'PUT',
@@ -83,7 +83,7 @@ export default function AdminPedidos() {
 
   const handleDeleteOrder = async (id) => {
     if (!window.confirm('¿Estás seguro de eliminar este pedido?')) return;
-    const token = localStorage.getItem('distrito_admin_token');
+    const token = sessionStorage.getItem('distrito_admin_token');
     try {
       await fetch(`${API_URL}/admin/orders/${id}`, {
         method: 'DELETE',
@@ -167,7 +167,7 @@ export default function AdminPedidos() {
     const total = newOrderCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
     try {
-      const token = localStorage.getItem('distrito_admin_token');
+      const token = sessionStorage.getItem('distrito_admin_token');
       const url = editingOrderId 
         ? `${API_URL}/admin/orders/${editingOrderId}/edit`
         : `${API_URL}/checkout`;
@@ -237,9 +237,13 @@ export default function AdminPedidos() {
     let matchesDate = true;
     if (filterDate && order.created_at) {
       const orderDate = new Date(order.created_at);
-      // Ajustar al offset local para que coincida con lo que ve el usuario
-      const localDateString = new Date(orderDate.getTime() - (orderDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-      matchesDate = localDateString === filterDate;
+      if (isNaN(orderDate.getTime())) {
+        matchesDate = false;
+      } else {
+        // Ajustar al offset local para que coincida con lo que ve el usuario
+        const localDateString = new Date(orderDate.getTime() - (orderDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        matchesDate = localDateString === filterDate;
+      }
     }
                           
     return matchesTab && matchesSearch && matchesDate;
@@ -295,6 +299,7 @@ export default function AdminPedidos() {
   const ordersInDate = orders.filter(o => {
     if (!filterDate || !o.created_at) return true;
     const orderDate = new Date(o.created_at);
+    if (isNaN(orderDate.getTime())) return false;
     const localDateString = new Date(orderDate.getTime() - (orderDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     return localDateString === filterDate;
   });
@@ -418,7 +423,7 @@ export default function AdminPedidos() {
       </div>
 
       {/* Tabla de Pedidos */}
-      <div style={{ backgroundColor: '#111111', borderRadius: '20px', border: '1px solid #222222', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+      <div className="responsive-table" style={{ backgroundColor: '#111111', borderRadius: '20px', border: '1px solid #222222', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1000px' }}>
             <thead>

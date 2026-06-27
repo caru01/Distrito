@@ -10,6 +10,7 @@ import AdminPedidos from './pages/AdminPedidos.jsx'
 import AdminProductos from './pages/AdminProductos.jsx'
 import AdminInventario from './pages/AdminInventario.jsx'
 import AdminConfiguracion from './pages/AdminConfiguracion.jsx'
+import AdminAnuncios from './pages/AdminAnuncios.jsx'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -26,6 +27,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="clientes" element={<div style={{padding:20}}>Vista de Clientes (En construcción)</div>} />
           <Route path="inventario" element={<AdminInventario />} />
           <Route path="reportes" element={<div style={{padding:20}}>Vista de Reportes (En construcción)</div>} />
+          <Route path="anuncios" element={<AdminAnuncios />} />
           <Route path="configuracion" element={<AdminConfiguracion />} />
         </Route>
       </Routes>
