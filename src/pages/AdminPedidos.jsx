@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Plus, Search, Filter, Globe, MessageCircle, Store, Phone, 
   Clock, Eye, Pencil, Printer, MoreVertical, CheckCircle, ChefHat, Truck, 
-  Banknote, CreditCard, Smartphone, X, ChevronLeft, ChevronRight, Trash2
+  Banknote, CreditCard, Smartphone, X, ChevronLeft, ChevronRight, Trash2, MapPin
 } from 'lucide-react';
 
 const API_URL = import.meta.env.PROD ? '/api/pedidos' : 'http://localhost:3001/api/pedidos';
@@ -27,6 +27,7 @@ export default function AdminPedidos() {
   const [newOrderCustomer, setNewOrderCustomer] = useState({
     name: 'Cliente Local', phone: '0000000000', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial'
   });
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   const fetchOrders = async () => {
     try {
@@ -217,7 +218,7 @@ export default function AdminPedidos() {
     }).filter(i => i.quantity > 0));
   };
 
-  const tabs = ['Todos', 'Nuevos', 'En preparación', 'Listos', 'En camino', 'Entregados', 'Cancelados'];
+  const tabs = ['Todos', 'Nuevos', 'En preparación', 'Listos', 'En camino', 'Entregados', 'Pendientes Pago', 'Cancelados'];
 
   const filteredOrders = orders.filter(order => {
     const matchesTab = activeTab === 'Todos' || 
@@ -226,6 +227,7 @@ export default function AdminPedidos() {
                       (activeTab === 'Listos' && order.status === 'Listo') ||
                       (activeTab === 'En camino' && order.status === 'En camino') ||
                       (activeTab === 'Entregados' && order.status === 'Entregado') ||
+                      (activeTab === 'Pendientes Pago' && order.status === 'Pendiente Pago') ||
                       (activeTab === 'Cancelados' && order.status === 'Cancelado');
     
     const searchLower = searchQuery.toLowerCase();
@@ -256,6 +258,7 @@ export default function AdminPedidos() {
       'Listo': { bg: 'rgba(34, 197, 94, 0.15)', color: '#4ADE80' },
       'En camino': { bg: 'rgba(245, 158, 11, 0.15)', color: '#FBBF24' },
       'Entregado': { bg: 'rgba(34, 197, 94, 0.25)', color: '#FFFFFF' },
+      'Pendiente Pago': { bg: 'rgba(139, 92, 246, 0.15)', color: '#A78BFA' },
       'Cancelado': { bg: 'rgba(239, 68, 68, 0.15)', color: '#F87171' }
     };
     const s = styles[status] || styles['Nuevo'];
@@ -308,6 +311,9 @@ export default function AdminPedidos() {
   const statPreparacion = ordersInDate.filter(o => o.status === 'En preparación').length;
   const statEntregados = ordersInDate.filter(o => o.status === 'Entregado').length;
   const totalVentas = ordersInDate.filter(o => o.status === 'Entregado' || o.status === 'Listo').reduce((s, o) => s + (o.total || 0), 0);
+
+  const uniqueCustomers = Array.from(new Map(orders.filter(o => o.customer_name && o.customer_name.trim() !== '' && o.customer_name !== 'Cliente Local').map(o => [o.customer_name.toLowerCase(), o])).values());
+  const filteredCustomers = newOrderCustomer.name ? uniqueCustomers.filter(c => c.customer_name.toLowerCase().includes(newOrderCustomer.name.toLowerCase())) : [];
 
   return (
     <div style={{ padding: '40px', fontFamily: "'Montserrat', 'Poppins', sans-serif", backgroundColor: '#0D0D0D', minHeight: '100%' }}>
@@ -395,6 +401,7 @@ export default function AdminPedidos() {
           else if (tab === 'Listos') count = orders.filter(o => o.status === 'Listo').length;
           else if (tab === 'En camino') count = orders.filter(o => o.status === 'En camino').length;
           else if (tab === 'Entregados') count = statEntregados;
+          else if (tab === 'Pendientes Pago') count = orders.filter(o => o.status === 'Pendiente Pago').length;
           else if (tab === 'Cancelados') count = orders.filter(o => o.status === 'Cancelado').length;
 
           return (
@@ -448,6 +455,12 @@ export default function AdminPedidos() {
                   <td style={{ padding: '16px 24px' }}>
                     <div style={{ color: '#FFFFFF', fontWeight: '600', fontSize: '15px' }}>{order.customer_name || 'Sin nombre'}</div>
                     <div style={{ color: '#BDBDBD', fontSize: '13px', marginTop: '4px' }}>{order.customer_phone || 'Sin teléfono'}</div>
+                    {(order.barrio || order.address) && (
+                      <div style={{ color: '#9CA3AF', fontSize: '12px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={12} />
+                        {[order.barrio, order.address].filter(Boolean).join(', ')}
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '16px 24px', color: '#FFFFFF', fontSize: '14px', fontWeight: '500' }}>
                     {getSourceIcon(order.source || 'Web')}
@@ -579,25 +592,33 @@ export default function AdminPedidos() {
               </div>
             </div>
 
-            <div style={{ padding: '24px', borderTop: '1px solid #222222', backgroundColor: '#181818', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <button 
-                onClick={() => handleUpdateStatus(selectedOrder.id, 'En preparación')}
-                style={{ padding: '12px', backgroundColor: '#3B82F6', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Preparar
-              </button>
-              <button 
-                onClick={() => handleUpdateStatus(selectedOrder.id, 'En camino')}
-                style={{ padding: '12px', backgroundColor: '#F59E0B', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Despachar
-              </button>
-              <button 
-                onClick={() => handleUpdateStatus(selectedOrder.id, 'Entregado')}
-                style={{ padding: '12px', backgroundColor: '#22C55E', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', gridColumn: 'span 2' }}
-              >
-                Marcar Entregado
-              </button>
+            <div style={{ padding: '24px', borderTop: '1px solid #222222', backgroundColor: '#181818' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <button 
+                  onClick={() => handleUpdateStatus(selectedOrder.id, 'En preparación')}
+                  style={{ padding: '12px', backgroundColor: '#3B82F6', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Preparar
+                </button>
+                <button 
+                  onClick={() => handleUpdateStatus(selectedOrder.id, 'En camino')}
+                  style={{ padding: '12px', backgroundColor: '#F59E0B', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Despachar
+                </button>
+                <button 
+                  onClick={() => handleUpdateStatus(selectedOrder.id, 'Pendiente Pago')}
+                  style={{ padding: '12px', backgroundColor: '#8B5CF6', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Pendiente Pago
+                </button>
+                <button 
+                  onClick={() => handleUpdateStatus(selectedOrder.id, 'Entregado')}
+                  style={{ padding: '12px', backgroundColor: '#22C55E', color: '#FFFFFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Marcar Entregado
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -661,7 +682,46 @@ export default function AdminPedidos() {
 
             <div style={{ padding: '20px', borderTop: '1px solid #222222', backgroundColor: '#181818' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                <input type="text" placeholder="Nombre cliente" value={newOrderCustomer.name} onChange={e => setNewOrderCustomer({...newOrderCustomer, name: e.target.value})} style={{ backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Nombre cliente" 
+                      value={newOrderCustomer.name} 
+                      onChange={e => {
+                        setNewOrderCustomer({...newOrderCustomer, name: e.target.value});
+                        setShowCustomerDropdown(true);
+                      }} 
+                      onFocus={() => setShowCustomerDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                      style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} 
+                    />
+                    {showCustomerDropdown && filteredCustomers.length > 0 && (
+                      <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, backgroundColor: '#1A1A1A', border: '1px solid #333', borderRadius: '8px', marginBottom: '4px', zIndex: 10, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                        {filteredCustomers.map((c, idx) => (
+                          <div 
+                            key={idx}
+                            onClick={() => {
+                              setNewOrderCustomer({
+                                ...newOrderCustomer,
+                                name: c.customer_name,
+                                phone: c.customer_phone || newOrderCustomer.phone,
+                                address: c.address || newOrderCustomer.address,
+                                deliveryType: c.delivery_type || newOrderCustomer.deliveryType,
+                                source: c.source || newOrderCustomer.source
+                              });
+                              setShowCustomerDropdown(false);
+                            }}
+                            style={{ padding: '10px', color: '#FFF', cursor: 'pointer', borderBottom: '1px solid #222' }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#333'}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            <div style={{ fontWeight: '600', fontSize: '14px' }}>{c.customer_name}</div>
+                            <div style={{ fontSize: '12px', color: '#9CA3AF' }}>{c.customer_phone}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 <input type="text" placeholder="Teléfono" value={newOrderCustomer.phone} onChange={e => setNewOrderCustomer({...newOrderCustomer, phone: e.target.value})} style={{ backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
