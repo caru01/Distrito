@@ -449,6 +449,8 @@ app.post('/api/pedidos/setup', async (req, res) => {
       ALTER TABLE pedidos_app_orders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Nuevo';
       ALTER TABLE pedidos_app_orders ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'Web';
       ALTER TABLE pedidos_app_orders ADD COLUMN IF NOT EXISTS notes TEXT;
+      ALTER TABLE pedidos_app_purchases ADD COLUMN IF NOT EXISTS iva_amount INTEGER DEFAULT 0;
+      ALTER TABLE pedidos_app_purchase_items ADD COLUMN IF NOT EXISTS iva_amount INTEGER DEFAULT 0;
 
       CREATE TABLE IF NOT EXISTS pedidos_app_users (
         id SERIAL PRIMARY KEY,
@@ -610,7 +612,7 @@ app.get('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => {
-  const { invoice_number, supplier, purchase_date, total_amount, notes, items } = req.body;
+  const { invoice_number, supplier, purchase_date, total_amount, iva_amount, notes, items } = req.body;
   const client = await pool.connect();
   
   try {
@@ -618,22 +620,22 @@ app.post('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => 
     
     // 1. Crear compra
     const { rows: purchaseRows } = await client.query(
-      `INSERT INTO pedidos_app_purchases (invoice_number, supplier, purchase_date, total_amount, notes) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [invoice_number, supplier, purchase_date || new Date(), total_amount, notes]
+      `INSERT INTO pedidos_app_purchases (invoice_number, supplier, purchase_date, total_amount, iva_amount, notes) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [invoice_number, supplier, purchase_date || new Date(), total_amount, iva_amount || 0, notes]
     );
     const purchase = purchaseRows[0];
 
     // 2. Procesar ítems
-    for (const item of items) {
-      // Registrar detalle de compra
-      await client.query(
-        `INSERT INTO pedidos_app_purchase_items (purchase_id, inventory_id, quantity, unit_cost, total_cost)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [purchase.id, item.inventory_id, item.quantity, item.unit_cost, item.total_cost]
-      );
-      
-      // Actualizar inventario (sumar stock y actualizar costo unitario)
+      for (const item of items) {
+        // Registrar detalle de compra
+        await client.query(
+          `INSERT INTO pedidos_app_purchase_items (purchase_id, inventory_id, quantity, unit_cost, total_cost, iva_amount)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [purchase.id, item.inventory_id, item.quantity, item.unit_cost, item.total_cost, item.iva_amount || 0]
+        );
+        
+        // Actualizar inventario (sumar stock y actualizar costo unitario)
       await client.query(
         `UPDATE pedidos_app_inventory 
          SET stock = stock + $1, unit_cost = $2, updated_at = NOW() 
@@ -644,13 +646,89 @@ app.post('/api/pedidos/admin/purchases', authenticateToken, async (req, res) => 
       // Registrar movimiento
       await client.query(
         `INSERT INTO pedidos_app_inventory_movements (inventory_id, movement_type, quantity, notes) 
-         VALUES ($1, $2, $3, $4)`,
-        [item.inventory_id, 'IN', item.quantity, `Compra Factura: ${invoice_number || 'S/N'}`]
+         VALUES ($1, 'In', $2, $3)`,
+        [item.inventory_id, item.quantity, `Compra: ${invoice_number || 'S/N'}`]
       );
     }
 
     await client.query('COMMIT');
     res.json({ status: 'ok', purchase });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ status: 'error', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/pedidos/admin/purchases/:id/items', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `SELECT pi.*, i.name, i.unit 
+       FROM pedidos_app_purchase_items pi
+       JOIN pedidos_app_inventory i ON pi.inventory_id = i.id
+       WHERE pi.purchase_id = $1`,
+      [id]
+    );
+    res.json({ status: 'ok', items: rows });
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+app.put('/api/pedidos/admin/purchases/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { invoice_number, supplier, purchase_date, total_amount, iva_amount, notes, items } = req.body;
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // 1. Obtener ítems antiguos para revertir stock
+    const { rows: oldItems } = await client.query('SELECT inventory_id, quantity FROM pedidos_app_purchase_items WHERE purchase_id = $1', [id]);
+    for (const old of oldItems) {
+      await client.query(
+        `UPDATE pedidos_app_inventory SET stock = stock - $1, updated_at = NOW() WHERE id = $2`,
+        [old.quantity, old.inventory_id]
+      );
+    }
+    
+    // 2. Eliminar ítems antiguos
+    await client.query('DELETE FROM pedidos_app_purchase_items WHERE purchase_id = $1', [id]);
+    
+    // 3. Actualizar datos de compra
+    await client.query(
+      `UPDATE pedidos_app_purchases 
+       SET invoice_number = $1, supplier = $2, purchase_date = $3, total_amount = $4, iva_amount = $5, notes = $6
+       WHERE id = $7`,
+      [invoice_number, supplier, purchase_date, total_amount, iva_amount || 0, notes, id]
+    );
+    
+    // 4. Insertar ítems nuevos y actualizar stock
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO pedidos_app_purchase_items (purchase_id, inventory_id, quantity, unit_cost, total_cost, iva_amount)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, item.inventory_id, item.quantity, item.unit_cost, item.total_cost, item.iva_amount || 0]
+        );
+        
+        await client.query(
+        `UPDATE pedidos_app_inventory 
+         SET stock = stock + $1, unit_cost = $2, updated_at = NOW() 
+         WHERE id = $3`,
+        [item.quantity, item.unit_cost, item.inventory_id]
+      );
+
+      await client.query(
+        `INSERT INTO pedidos_app_inventory_movements (inventory_id, movement_type, quantity, notes) 
+         VALUES ($1, 'In', $2, $3)`,
+        [item.inventory_id, item.quantity, `Edición Compra: ${invoice_number || 'S/N'}`]
+      );
+    }
+    
+    await client.query('COMMIT');
+    res.json({ status: 'ok' });
   } catch (error) {
     await client.query('ROLLBACK');
     res.status(500).json({ status: 'error', error: error.message });

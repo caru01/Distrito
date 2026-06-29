@@ -1163,11 +1163,22 @@ body {
   }
   
   .categories {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     gap: 0.5rem;
     padding: 0.5rem 1rem 1.5rem;
-    overflow-x: visible;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .categories::-webkit-scrollbar {
+    display: none;
+  }
+  .category-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   
   .product-grid {

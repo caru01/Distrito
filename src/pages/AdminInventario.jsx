@@ -33,7 +33,7 @@ export default function AdminInventario() {
 
   // Purchase State
   const [newPurchase, setNewPurchase] = useState({
-    invoice_number: '', supplier: '', purchase_date: new Date().toISOString().split('T')[0], notes: '', items: []
+    id: null, invoice_number: '', supplier: '', purchase_date: new Date().toISOString().split('T')[0], notes: '', iva_amount: 0, items: []
   });
   const [purchaseItemSearch, setPurchaseItemSearch] = useState('');
 
@@ -115,22 +115,52 @@ export default function AdminInventario() {
     if (newPurchase.items.length === 0) return alert('Debes agregar al menos un ítem a la compra');
     
     const token = sessionStorage.getItem('distrito_admin_token');
-    const total_amount = newPurchase.items.reduce((sum, item) => sum + item.total_cost, 0);
+    const total_amount = Math.round(newPurchase.items.reduce((sum, item) => sum + item.total_cost + (item.total_cost * (item.iva_amount || 0) / 100), 0));
 
     try {
-      const res = await fetch(`${API_URL}/admin/purchases`, {
-        method: 'POST',
+      const isEditing = !!newPurchase.id;
+      const url = isEditing ? `${API_URL}/admin/purchases/${newPurchase.id}` : `${API_URL}/admin/purchases`;
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ ...newPurchase, total_amount })
       });
       if (res.ok) {
         setIsPurchaseModalOpen(false);
-        setNewPurchase({ invoice_number: '', supplier: '', purchase_date: new Date().toISOString().split('T')[0], notes: '', items: [] });
+        setNewPurchase({ id: null, invoice_number: '', supplier: '', purchase_date: new Date().toISOString().split('T')[0], notes: '', iva_amount: 0, items: [] });
         fetchData();
       } else {
-        alert('Error al registrar compra');
+        const errText = await res.text();
+        alert('Error al registrar compra: ' + errText);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); alert('Exception: ' + err.message); }
+  };
+
+  const handleEditPurchase = async (purchase) => {
+    try {
+      const token = sessionStorage.getItem('distrito_admin_token');
+      const res = await fetch(`${API_URL}/admin/purchases/${purchase.id}/items`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setNewPurchase({
+          id: purchase.id,
+          invoice_number: purchase.invoice_number || '',
+          supplier: purchase.supplier || '',
+          purchase_date: new Date(purchase.purchase_date).toISOString().split('T')[0],
+          notes: purchase.notes || '',
+          iva_amount: purchase.iva_amount || 0,
+          items: data.items
+        });
+        setIsPurchaseModalOpen(true);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error obteniendo ítems de compra');
+    }
   };
 
   // Cálculos estadísticos
@@ -279,8 +309,10 @@ export default function AdminInventario() {
                   <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>Fecha</th>
                   <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>Factura #</th>
                   <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>Proveedor</th>
+                  <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>IVA</th>
                   <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>Total</th>
                   <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>Notas</th>
+                  <th style={{ padding: '20px 24px', color: '#BDBDBD', fontWeight: '600', fontSize: '13px', textTransform: 'uppercase' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -289,13 +321,17 @@ export default function AdminInventario() {
                     <td style={{ padding: '16px 24px', color: '#FFFFFF', fontWeight: '500' }}>{new Date(purchase.purchase_date).toLocaleDateString()}</td>
                     <td style={{ padding: '16px 24px', color: '#D4A017', fontWeight: '700' }}>{purchase.invoice_number || 'S/N'}</td>
                     <td style={{ padding: '16px 24px', color: '#FFFFFF' }}>{purchase.supplier || 'Varios'}</td>
+                    <td style={{ padding: '16px 24px', color: '#FFFFFF' }}>${(purchase.iva_amount || 0).toLocaleString()}</td>
                     <td style={{ padding: '16px 24px', color: '#FFFFFF', fontWeight: '700' }}>${(purchase.total_amount || 0).toLocaleString()}</td>
                     <td style={{ padding: '16px 24px', color: '#BDBDBD' }}>{purchase.notes}</td>
+                    <td style={{ padding: '16px 24px' }}>
+                      <button onClick={() => handleEditPurchase(purchase)} style={{ background: 'none', border: 'none', color: '#D4A017', cursor: 'pointer' }}><Pencil size={18} /></button>
+                    </td>
                   </tr>
                 ))}
                 {purchases.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#6B7280' }}>No hay compras registradas</td>
+                    <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6B7280' }}>No hay compras registradas</td>
                   </tr>
                 )}
               </tbody>
@@ -490,7 +526,7 @@ export default function AdminInventario() {
                           if (!newPurchase.items.find(i => i.inventory_id === item.id)) {
                             setNewPurchase({
                               ...newPurchase, 
-                              items: [...newPurchase.items, { inventory_id: item.id, name: item.name, unit: item.unit, quantity: 1, unit_cost: item.unit_cost, total_cost: item.unit_cost }]
+                              items: [...newPurchase.items, { inventory_id: item.id, name: item.name, unit: item.unit, quantity: 1, unit_cost: item.unit_cost, total_cost: item.unit_cost, iva_amount: 0 }]
                             });
                           }
                         }}
@@ -515,7 +551,7 @@ export default function AdminInventario() {
                     <input type="text" placeholder="Macro, D1..." value={newPurchase.supplier} onChange={e => setNewPurchase({...newPurchase, supplier: e.target.value})} style={{ width: '100%', backgroundColor: '#1A1A1A', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
                   </div>
                   <div>
-                    <label style={{ color: '#BDBDBD', display: 'block', marginBottom: '8px', fontSize: '13px' }}>N° Factura (Opc.)</label>
+                    <label style={{ color: '#BDBDBD', display: 'block', marginBottom: '8px', fontSize: '13px' }}>Nº Factura (Opc.)</label>
                     <input type="text" placeholder="FAC-1234" value={newPurchase.invoice_number} onChange={e => setNewPurchase({...newPurchase, invoice_number: e.target.value})} style={{ width: '100%', backgroundColor: '#1A1A1A', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
                   </div>
                 </div>
@@ -526,28 +562,37 @@ export default function AdminInventario() {
                     <div style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Agrega ítems desde la lista izquierda</div>
                   ) : (
                     newPurchase.items.map((item, idx) => (
-                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: '12px', alignItems: 'center', marginBottom: '12px', padding: '12px', backgroundColor: '#1A1A1A', borderRadius: '8px' }}>
+                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1.5fr auto', gap: '12px', alignItems: 'center', marginBottom: '12px', padding: '12px', backgroundColor: '#1A1A1A', borderRadius: '8px' }}>
                         <div style={{ color: '#FFF', fontSize: '13px', fontWeight: '600' }}>{item.name}</div>
                         <div>
                           <label style={{ color: '#888', fontSize: '11px', display: 'block' }}>Cant. ({item.unit})</label>
                           <input type="number" step="0.01" value={item.quantity} onChange={e => {
                             const qty = parseFloat(e.target.value) || 0;
                             const newItems = [...newPurchase.items];
-                            newItems[idx] = { ...item, quantity: qty, total_cost: qty * item.unit_cost };
+                            newItems[idx] = { ...item, quantity: qty, total_cost: Math.round(qty * item.unit_cost) };
                             setNewPurchase({...newPurchase, items: newItems});
-                          }} style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', padding: '6px', borderRadius: '4px', color: '#FFF' }} />
+                          }} style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', padding: '6px', borderRadius: '4px', color: '#FFF', boxSizing: 'border-box' }} />
                         </div>
                         <div>
                           <label style={{ color: '#888', fontSize: '11px', display: 'block' }}>Costo Unit.</label>
                           <input type="number" value={item.unit_cost} onChange={e => {
                             const cost = parseInt(e.target.value) || 0;
                             const newItems = [...newPurchase.items];
-                            newItems[idx] = { ...item, unit_cost: cost, total_cost: item.quantity * cost };
+                            newItems[idx] = { ...item, unit_cost: cost, total_cost: Math.round(item.quantity * cost) };
                             setNewPurchase({...newPurchase, items: newItems});
-                          }} style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', padding: '6px', borderRadius: '4px', color: '#FFF' }} />
+                          }} style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', padding: '6px', borderRadius: '4px', color: '#FFF', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ color: '#888', fontSize: '11px', display: 'block' }}>IVA (%)</label>
+                          <input type="number" value={item.iva_amount || 0} onChange={e => {
+                            const iva = parseInt(e.target.value) || 0;
+                            const newItems = [...newPurchase.items];
+                            newItems[idx] = { ...item, iva_amount: iva };
+                            setNewPurchase({...newPurchase, items: newItems});
+                          }} style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', padding: '6px', borderRadius: '4px', color: '#FFF', boxSizing: 'border-box' }} />
                         </div>
                         <div style={{ color: '#D4A017', fontWeight: '700', fontSize: '14px', textAlign: 'right' }}>
-                          ${item.total_cost.toLocaleString()}
+                          ${Math.round(((item.total_cost || 0) + ((item.total_cost || 0) * (item.iva_amount || 0) / 100))).toLocaleString()}
                         </div>
                         <button onClick={() => {
                           const newItems = newPurchase.items.filter((_, i) => i !== idx);
@@ -560,9 +605,9 @@ export default function AdminInventario() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1A1A1A', padding: '20px', borderRadius: '12px', border: '1px solid #333' }}>
                   <div>
-                    <div style={{ color: '#BDBDBD', fontSize: '14px' }}>Total Factura</div>
+                    <div style={{ color: '#BDBDBD', fontSize: '14px' }}>Total Factura (Subtotal + IVA)</div>
                     <div style={{ color: '#FFF', fontSize: '28px', fontWeight: '800' }}>
-                      ${newPurchase.items.reduce((s, i) => s + i.total_cost, 0).toLocaleString()}
+                      ${Math.round(newPurchase.items.reduce((s, i) => s + (i.total_cost || 0) + ((i.total_cost || 0) * (i.iva_amount || 0) / 100), 0)).toLocaleString()}
                     </div>
                   </div>
                   <button onClick={handleSavePurchase} style={{ backgroundColor: '#D4A017', color: '#000', border: 'none', borderRadius: '12px', padding: '16px 32px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>
