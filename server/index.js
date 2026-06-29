@@ -6,6 +6,11 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const webpush = require('web-push');
+
+const publicVapidKey = 'BBCJtzBn22IJcujyWlCCwtSAyWLfsiELTqWAjQcEiOuPX0yiad9P5LIpMJv5T8VwkHJU0vxLHTqFYImzLYWBQyU';
+const privateVapidKey = 'Sn-oYBv_LJxdaKVe3S7GEdlKGuT9n50SifBdNpDPpxs';
+webpush.setVapidDetails('mailto:soporte@distrito.com', publicVapidKey, privateVapidKey);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'distrito_super_secret_2026';
 
@@ -460,6 +465,12 @@ app.post('/api/pedidos/setup', async (req, res) => {
         status VARCHAR(20) DEFAULT 'Activa',
         created_at TIMESTAMP DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS pedidos_app_push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        endpoint TEXT UNIQUE NOT NULL,
+        subscription_json JSON NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
 
     // Insertar usuario por defecto si no hay
@@ -673,7 +684,52 @@ app.post('/api/pedidos/rate', async (req, res) => {
   }
 });
 
-// --- MÓDULO DE ANUNCIOS ---
+// --- MÓDULO DE ANUNCIOS Y PUSH ---
+app.post('/api/pedidos/push/subscribe', async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ error: 'Suscripción inválida' });
+    }
+    await pool.query(
+      `INSERT INTO pedidos_app_push_subscriptions (endpoint, subscription_json)
+       VALUES ($1, $2)
+       ON CONFLICT (endpoint) DO UPDATE SET subscription_json = $2`,
+      [subscription.endpoint, JSON.stringify(subscription)]
+    );
+    res.status(201).json({ status: 'ok' });
+  } catch (err) {
+    console.error('Error guardando suscripción:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pedidos/admin/push/send', authenticateToken, async (req, res) => {
+  try {
+    const { title, message, url } = req.body;
+    const { rows } = await pool.query('SELECT subscription_json FROM pedidos_app_push_subscriptions');
+    
+    const payload = JSON.stringify({ title, body: message, url: url || '/' });
+    
+    const promises = rows.map(async (row) => {
+      const sub = typeof row.subscription_json === 'string' ? JSON.parse(row.subscription_json) : row.subscription_json;
+      try {
+        await webpush.sendNotification(sub, payload);
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await pool.query('DELETE FROM pedidos_app_push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
+        }
+      }
+    });
+    
+    await Promise.all(promises);
+    res.json({ status: 'ok', sent: rows.length });
+  } catch (err) {
+    console.error('Error enviando push:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/pedidos/announcement', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM pedidos_app_announcements ORDER BY id DESC LIMIT 1');

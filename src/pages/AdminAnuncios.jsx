@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Save, Image as ImageIcon, CheckCircle, XCircle } from 'lucide-react';
+import { Megaphone, Save, Image as ImageIcon, CheckCircle, XCircle, Bell, Send } from 'lucide-react';
 
 const API_URL = import.meta.env.PROD ? '/api/pedidos' : 'http://localhost:3001/api/pedidos';
 
@@ -12,6 +12,11 @@ export default function AdminAnuncios() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+
+  // Push State
+  const [pushData, setPushData] = useState({ title: '', message: '', url: '/' });
+  const [sendingPush, setSendingPush] = useState(false);
+  const [pushMessage, setPushMessage] = useState('');
 
   useEffect(() => {
     fetchAnnouncement();
@@ -75,6 +80,30 @@ export default function AdminAnuncios() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSendPush = async () => {
+    if (!pushData.title || !pushData.message) return setPushMessage('Error: Título y mensaje requeridos');
+    setSendingPush(true);
+    setPushMessage('');
+    try {
+      const token = sessionStorage.getItem('distrito_admin_token');
+      const res = await fetch(`${API_URL}/admin/push/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(pushData)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPushMessage(`¡Notificación enviada a ${data.sent} clientes!`);
+        setPushData({ title: '', message: '', url: '/' });
+      } else {
+        setPushMessage(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      setPushMessage('Error de conexión al enviar Push');
+    }
+    setSendingPush(false);
   };
 
   if (loading) return <div style={{ padding: '40px', color: '#FFF' }}>Cargando...</div>;
@@ -204,6 +233,58 @@ export default function AdminAnuncios() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Notificaciones Push */}
+      <div style={{ marginTop: '40px', display: 'grid', gridTemplateColumns: '1fr', gap: '40px' }}>
+        <div style={{ backgroundColor: '#111111', borderRadius: '20px', padding: '30px', border: '1px solid #222222' }}>
+          <h2 style={{ color: '#FFFFFF', fontSize: '24px', fontWeight: '800', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Bell size={28} color="#D4A017" /> Enviar Notificación Push (A Celulares)
+          </h2>
+          <p style={{ color: '#BDBDBD', fontSize: '15px', marginBottom: '24px' }}>
+            Envía un mensaje directo a todos los clientes que hayan aceptado recibir notificaciones e instalado la App.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div>
+              <label style={{ display: 'block', color: '#BDBDBD', marginBottom: '8px', fontWeight: '500' }}>Título</label>
+              <input 
+                type="text" 
+                value={pushData.title}
+                onChange={(e) => setPushData({...pushData, title: e.target.value})}
+                placeholder="Ej: ¡Promo 2x1!"
+                style={{ width: '100%', backgroundColor: '#1A1A1A', border: '1px solid #333333', borderRadius: '12px', padding: '14px', color: '#FFFFFF', fontSize: '15px', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', color: '#BDBDBD', marginBottom: '8px', fontWeight: '500' }}>Mensaje</label>
+              <input 
+                type="text" 
+                value={pushData.message}
+                onChange={(e) => setPushData({...pushData, message: e.target.value})}
+                placeholder="Ej: Pide hoy y el envío es gratis."
+                style={{ width: '100%', backgroundColor: '#1A1A1A', border: '1px solid #333333', borderRadius: '12px', padding: '14px', color: '#FFFFFF', fontSize: '15px', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          <button 
+            onClick={handleSendPush}
+            disabled={sendingPush}
+            style={{ 
+              width: '100%', backgroundColor: '#22C55E', color: '#FFFFFF', border: 'none', borderRadius: '12px', 
+              padding: '16px', fontSize: '16px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '24px' 
+            }}
+          >
+            <Send size={20} /> {sendingPush ? 'Enviando...' : 'Enviar Notificación a Todos'}
+          </button>
+
+          {pushMessage && (
+            <div style={{ marginTop: '16px', padding: '12px', backgroundColor: pushMessage.includes('Error') ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)', color: pushMessage.includes('Error') ? '#EF4444' : '#4ADE80', borderRadius: '8px', textAlign: 'center', fontWeight: '500' }}>
+              {pushMessage}
+            </div>
+          )}
         </div>
       </div>
     </div>
