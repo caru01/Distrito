@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Outlet, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBag, Package, List, Users, Archive, BarChart3, Settings, LogOut, Megaphone, Menu, X } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Package, List, Users, Archive, BarChart3, Settings, LogOut, Megaphone, Menu, X, Scale } from 'lucide-react';
 
 export default function AdminLayout() {
   const token = sessionStorage.getItem('distrito_admin_token');
@@ -53,6 +53,7 @@ export default function AdminLayout() {
     { name: 'Categorías', path: '/admin/categorias', icon: <List size={20} /> },
     { name: 'Clientes', path: '/admin/clientes', icon: <Users size={20} /> },
     { name: 'Inventario', path: '/admin/inventario', icon: <Archive size={20} /> },
+    { name: 'Rendimientos', path: '/admin/rendimientos', icon: <Scale size={20} /> },
     { name: 'Reportes', path: '/admin/reportes', icon: <BarChart3 size={20} /> },
     { name: 'Anuncios', path: '/admin/anuncios', icon: <Megaphone size={20} /> },
     { name: 'Configuración', path: '/admin/configuracion', icon: <Settings size={20} /> },

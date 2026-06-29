@@ -459,20 +459,49 @@ app.post('/api/pedidos/setup', async (req, res) => {
         role VARCHAR(50) DEFAULT 'admin',
         created_at TIMESTAMP DEFAULT NOW()
       );
-      CREATE TABLE IF NOT EXISTS pedidos_app_categories (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) UNIQUE NOT NULL,
-        description TEXT,
-        image TEXT,
-        status VARCHAR(20) DEFAULT 'Activa',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS pedidos_app_push_subscriptions (
-        id SERIAL PRIMARY KEY,
-        endpoint TEXT UNIQUE NOT NULL,
-        subscription_json JSON NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
+        CREATE TABLE IF NOT EXISTS pedidos_app_categories (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) UNIQUE NOT NULL,
+          description TEXT,
+          image TEXT,
+          status VARCHAR(20) DEFAULT 'Activa',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS pedidos_app_customers (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255),
+          phone VARCHAR(50) UNIQUE NOT NULL,
+          avatar_url TEXT,
+          total_orders INTEGER DEFAULT 0,
+          total_spent INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS pedidos_app_push_subscriptions (
+          id SERIAL PRIMARY KEY,
+          endpoint TEXT UNIQUE NOT NULL,
+          subscription_json JSON NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS pedidos_app_inventory (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) UNIQUE NOT NULL,
+          category VARCHAR(100) DEFAULT 'General',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS pedidos_app_rendimientos (
+          id SERIAL PRIMARY KEY,
+          ingrediente_id INTEGER REFERENCES pedidos_app_inventory(id) ON DELETE CASCADE,
+          ingrediente_name VARCHAR(255),
+          unidad_compra VARCHAR(50),
+          cantidad_comprada NUMERIC(10, 2),
+          costo_compra INTEGER,
+          unidad_consumo VARCHAR(50),
+          rendimiento_obtenido NUMERIC(10, 2),
+          costo_por_unidad NUMERIC(10, 2),
+          estado VARCHAR(20) DEFAULT 'Activo',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
     `);
 
     // Insertar usuario por defecto si no hay
@@ -839,6 +868,170 @@ app.put('/api/pedidos/admin/announcement', authenticateToken, async (req, res) =
       );
       res.json({ status: 'ok', announcement: inserted.rows[0] });
     }
+  } catch (error) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+// ================= RENDIMIENTOS & INVENTARIO =================
+app.get('/api/pedidos/admin/inventory', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM pedidos_app_inventory ORDER BY name ASC');
+    res.json({ status: 'ok', data: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pedidos/admin/inventory', authenticateToken, async (req, res) => {
+  try {
+    const { name, category } = req.body;
+    const { rows } = await pool.query(
+      'INSERT INTO pedidos_app_inventory (name, category) VALUES ($1, $2) RETURNING *',
+      [name, category || 'General']
+    );
+    res.json({ status: 'ok', data: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pedidos/admin/rendimientos', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM pedidos_app_rendimientos ORDER BY id DESC');
+    res.json({ status: 'ok', data: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pedidos/admin/rendimientos', authenticateToken, async (req, res) => {
+  try {
+    const { ingrediente_id, ingrediente_name, unidad_compra, cantidad_comprada, costo_compra, unidad_consumo, rendimiento_obtenido } = req.body;
+    const costo_por_unidad = Number(costo_compra) / Number(rendimiento_obtenido);
+    
+    const { rows } = await pool.query(
+      `INSERT INTO pedidos_app_rendimientos 
+      (ingrediente_id, ingrediente_name, unidad_compra, cantidad_comprada, costo_compra, unidad_consumo, rendimiento_obtenido, costo_por_unidad) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [ingrediente_id, ingrediente_name, unidad_compra, cantidad_comprada, costo_compra, unidad_consumo, rendimiento_obtenido, costo_por_unidad]
+    );
+    res.json({ status: 'ok', data: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/pedidos/admin/rendimientos/:id', authenticateToken, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM pedidos_app_rendimientos WHERE id = $1', [req.params.id]);
+    res.json({ status: 'ok' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================= REPORTES =================
+app.get('/api/pedidos/admin/reports', authenticateToken, async (req, res) => {
+  try {
+    const { rows: orders } = await pool.query("SELECT * FROM pedidos_app_orders WHERE status = 'Completado' OR status = 'Entregado'");
+    const { rows: purchases } = await pool.query("SELECT total_amount FROM pedidos_app_purchases");
+
+    let totalVentas = 0;
+    let pedidosCount = orders.length;
+    let clientesUnicos = new Set();
+    let ventasPorFecha = {};
+    let ventasPorCategoria = {};
+    let ventasPorMetodo = {};
+    let ventasPorProducto = {};
+    let topClientes = {};
+
+    orders.forEach(order => {
+      totalVentas += order.total || 0;
+        const name = (order.customer_name || 'Cliente sin nombre').trim();
+        const phone = (order.customer_phone || '').trim();
+        const clientKey = `${name.toLowerCase()}-${phone}`;
+        
+        clientesUnicos.add(clientKey);
+
+        if (!topClientes[clientKey]) {
+          topClientes[clientKey] = { name: name, phone: phone, total: 0, count: 0, products: {}, orderHistory: [] };
+        }
+        topClientes[clientKey].total += order.total || 0;
+        topClientes[clientKey].count += 1;
+        topClientes[clientKey].orderHistory.push({
+          date: order.created_at,
+          total: order.total || 0,
+          cart: order.cart_json || []
+        });
+      
+      const dateStr = new Date(order.created_at).toLocaleDateString();
+      ventasPorFecha[dateStr] = (ventasPorFecha[dateStr] || 0) + (order.total || 0);
+
+      const method = order.payment_method || 'Otro';
+      ventasPorMetodo[method] = (ventasPorMetodo[method] || 0) + (order.total || 0);
+
+      if (order.cart_json) {
+        order.cart_json.forEach(item => {
+          const cat = item.category || 'Otros';
+          const qty = item.qty || item.quantity || 1;
+          const itemTotal = item.price * qty;
+          ventasPorCategoria[cat] = (ventasPorCategoria[cat] || 0) + itemTotal;
+
+          if (!ventasPorProducto[item.title]) ventasPorProducto[item.title] = { name: item.title, category: cat, quantity: 0, total: 0 };
+          ventasPorProducto[item.title].quantity += qty;
+          ventasPorProducto[item.title].total += itemTotal;
+
+          // Track for customer favorite
+          if (!topClientes[clientKey].products[item.title]) {
+            topClientes[clientKey].products[item.title] = 0;
+          }
+          topClientes[clientKey].products[item.title] += qty;
+        });
+      }
+    });
+
+    const totalCompras = purchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+    const utilidadBruta = totalVentas - totalCompras;
+    const ticketPromedio = pedidosCount > 0 ? totalVentas / pedidosCount : 0;
+
+    const chartVentas = Object.keys(ventasPorFecha).map(date => ({ date, ventas: ventasPorFecha[date] }));
+    const chartCategorias = Object.keys(ventasPorCategoria).map(name => ({ name, value: ventasPorCategoria[name] }));
+    const chartPagos = Object.keys(ventasPorMetodo).map(name => ({ name, value: ventasPorMetodo[name] }));
+    const listProductos = Object.values(ventasPorProducto).sort((a, b) => b.total - a.total).slice(0, 5);
+    const listClientes = Object.values(topClientes).map(client => {
+      let favorite = "Ninguno";
+      let maxQty = 0;
+      for (const [prodName, qty] of Object.entries(client.products)) {
+        if (qty > maxQty) {
+          maxQty = qty;
+          favorite = prodName;
+        }
+      }
+      client.favoriteProduct = favorite;
+      return client;
+    }).sort((a, b) => b.total - a.total).slice(0, 5);
+
+    res.json({
+      status: 'ok',
+      kpis: {
+        totalVentas,
+        pedidosRealizados: pedidosCount,
+        clientesAtendidos: clientesUnicos.size,
+        ticketPromedio: Math.round(ticketPromedio),
+        utilidadBruta,
+        totalCompras
+      },
+      charts: {
+        ventas: chartVentas,
+        categorias: chartCategorias,
+        pagos: chartPagos
+      },
+      lists: {
+        productos: listProductos,
+        clientes: listClientes
+      }
+    });
   } catch (error) {
     res.status(500).json({ status: 'error', error: error.message });
   }
