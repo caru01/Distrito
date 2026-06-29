@@ -25,7 +25,7 @@ export default function AdminPedidos() {
   const [posSearch, setPosSearch] = useState('');
   const [newOrderCart, setNewOrderCart] = useState([]);
   const [newOrderCustomer, setNewOrderCustomer] = useState({
-    name: 'Cliente Local', phone: '0000000000', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial'
+    name: 'Cliente Local', phone: '0000000000', barrio: '', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial'
   });
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
@@ -74,7 +74,7 @@ export default function AdminPedidos() {
       if (res.ok) {
         fetchOrders();
         if (selectedOrder && selectedOrder.id === id) {
-          setSelectedOrder({ ...selectedOrder, status: newStatus });
+          setSelectedOrder(null);
         }
       }
     } catch (err) {
@@ -99,11 +99,13 @@ export default function AdminPedidos() {
   const handlePrintOrder = (order) => {
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     let itemsHtml = '';
-    if (order.cart_json) {
+    if (order.cart_json && Array.isArray(order.cart_json)) {
       order.cart_json.forEach(item => {
+        const qty = item.quantity || item.qty || 1;
+        const price = item.price || 0;
         itemsHtml += `<div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-          <span>${item.quantity}x ${item.title}</span>
-          <span>$${(item.price * item.quantity).toLocaleString()}</span>
+          <span>${qty}x ${item.title}</span>
+          <span>$${(price * qty).toLocaleString()}</span>
         </div>`;
       });
     }
@@ -150,10 +152,11 @@ export default function AdminPedidos() {
 
   const handleEditOrder = (order) => {
     setEditingOrderId(order.id);
-    setNewOrderCart(order.cart_json || []);
+    setNewOrderCart((order.cart_json || []).map(i => ({...i, quantity: i.quantity || i.qty || 1})));
     setNewOrderCustomer({
       name: order.customer_name || '',
       phone: order.customer_phone || '',
+      barrio: order.barrio || '',
       address: order.address || '',
       deliveryType: order.delivery_type || 'presencial',
       paymentMethod: order.payment_method || 'efectivo',
@@ -192,7 +195,7 @@ export default function AdminPedidos() {
         setIsNewOrderOpen(false);
         setEditingOrderId(null);
         setNewOrderCart([]);
-        setNewOrderCustomer({ name: 'Cliente Local', phone: '0000000000', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial' });
+        setNewOrderCustomer({ name: 'Cliente Local', phone: '0000000000', barrio: '', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial' });
         fetchOrders();
       } else {
         alert('Error guardando pedido');
@@ -329,7 +332,12 @@ export default function AdminPedidos() {
         </div>
         
         <button 
-          onClick={() => setIsNewOrderOpen(true)}
+          onClick={() => {
+            setEditingOrderId(null);
+            setNewOrderCart([]);
+            setNewOrderCustomer({ name: 'Cliente Local', phone: '0000000000', barrio: '', address: '', deliveryType: 'presencial', paymentMethod: 'efectivo', source: 'Presencial' });
+            setIsNewOrderOpen(true);
+          }}
           style={{ 
             backgroundColor: '#D4A017', color: '#000000', border: 'none', borderRadius: '12px', height: '48px', 
             padding: '0 24px', fontSize: '16px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'
@@ -574,10 +582,10 @@ export default function AdminPedidos() {
                 {selectedOrder.cart_json && selectedOrder.cart_json.map((item, idx) => (
                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: idx < selectedOrder.cart_json.length - 1 ? '1px solid #333333' : 'none', paddingBottom: '12px', marginBottom: '12px' }}>
                     <div>
-                      <div style={{ color: '#FFFFFF', fontWeight: '500' }}>{item.quantity}x {item.title}</div>
+                      <div style={{ color: '#FFFFFF', fontWeight: '500' }}>{item.quantity || item.qty || 1}x {item.title}</div>
                       {item.notes && <div style={{ color: '#D4A017', fontSize: '13px', marginTop: '4px' }}>Nota: {item.notes}</div>}
                     </div>
-                    <div style={{ color: '#FFFFFF', fontWeight: '600' }}>${(item.price * item.quantity).toLocaleString()}</div>
+                    <div style={{ color: '#FFFFFF', fontWeight: '600' }}>${((item.price || 0) * (item.quantity || item.qty || 1)).toLocaleString()}</div>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #333333', paddingTop: '12px', marginTop: '4px' }}>
@@ -674,6 +682,7 @@ export default function AdminPedidos() {
                       <button onClick={() => updateCartQty(item.id, -1)} style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', fontSize: '16px' }}>-</button>
                       <span style={{ color: '#FFF', fontWeight: '600' }}>{item.quantity}</span>
                       <button onClick={() => updateCartQty(item.id, 1)} style={{ background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', fontSize: '16px' }}>+</button>
+                      <button onClick={() => setNewOrderCart(prev => prev.filter(i => i.id !== item.id))} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', marginLeft: '4px' }}><Trash2 size={16} /></button>
                     </div>
                   </div>
                 ))
@@ -723,6 +732,10 @@ export default function AdminPedidos() {
                     )}
                   </div>
                 <input type="text" placeholder="Teléfono" value={newOrderCustomer.phone} onChange={e => setNewOrderCustomer({...newOrderCustomer, phone: e.target.value})} style={{ backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <input type="text" placeholder="Barrio" value={newOrderCustomer.barrio} onChange={e => setNewOrderCustomer({...newOrderCustomer, barrio: e.target.value})} style={{ backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
+                <input type="text" placeholder="Dirección" value={newOrderCustomer.address} onChange={e => setNewOrderCustomer({...newOrderCustomer, address: e.target.value})} style={{ backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }} />
               </div>
               <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
                 <select value={newOrderCustomer.source} onChange={e => setNewOrderCustomer({...newOrderCustomer, source: e.target.value})} style={{ flex: 1, backgroundColor: '#111', border: '1px solid #333', padding: '10px', borderRadius: '8px', color: '#FFF', outline: 'none' }}>

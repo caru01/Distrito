@@ -96,11 +96,13 @@ app.post('/api/pedidos/checkout', async (req, res) => {
     if (!process.env.DATABASE_URL) {
       return res.json({ status: 'ok', order_id: Math.floor(Math.random() * 1000) });
     }
+    
+    const customDate = req.body.created_at || customer.created_at ? new Date(req.body.created_at || customer.created_at).toISOString() : null;
 
     const { rows } = await pool.query(
       `INSERT INTO pedidos_app_orders 
        (customer_name, customer_phone, address, barrio, delivery_type, payment_method, total, cart_json, source, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW())) 
        RETURNING id`,
       [
         customer.name, 
@@ -111,7 +113,8 @@ app.post('/api/pedidos/checkout', async (req, res) => {
         customer.paymentMethod, 
         total, 
         JSON.stringify(cart),
-        req.body.source || 'Web'
+        req.body.source || customer.source || 'Web',
+        customDate
       ]
     );
 
@@ -277,12 +280,13 @@ app.put('/api/pedidos/admin/orders/:id/edit', authenticateToken, async (req, res
     
     // Convertir el cart a string JSON
     const cartStr = JSON.stringify(cart);
+    const customDate = customer.created_at ? new Date(customer.created_at).toISOString() : null;
 
     const { rows } = await pool.query(
       `UPDATE pedidos_app_orders 
-       SET cart_json = $1, total = $2, customer_name = $3, customer_phone = $4, address = $5, delivery_type = $6, payment_method = $7
-       WHERE id = $8 RETURNING *`,
-      [cartStr, total, customer.name, customer.phone, customer.address, customer.deliveryType, customer.paymentMethod, id]
+       SET cart_json = $1, total = $2, customer_name = $3, customer_phone = $4, address = $5, delivery_type = $6, payment_method = $7, barrio = $8, source = $9, created_at = COALESCE($10, created_at)
+       WHERE id = $11 RETURNING *`,
+      [cartStr, total, customer.name, customer.phone, customer.address, customer.deliveryType, customer.paymentMethod, customer.barrio || '', req.body.source || customer.source || 'Web', customDate, id]
     );
     res.json({ status: 'ok', order: rows[0] });
   } catch (error) {
